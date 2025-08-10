@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>useRef() – Demo visual</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 24px; background: #0f172a; color: #e2e8f0; }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 16px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,.25); max-width: 900px; margin: 0 auto; }
+    h1 { margin-top: 0; font-size: 28px; letter-spacing: .3px; }
+    .row { display: grid; grid-template-columns: 1fr; gap: 20px; }
+    @media (min-width: 900px){ .row { grid-template-columns: 1.2fr .8fr; } }
+    canvas { width: 100%; height: auto; border-radius: 12px; background: radial-gradient(1200px 600px at 20% 0%, #0b1226 0, #0b1226 40%, #0a0f1f 60%, #0a0f1f 100%); border: 1px solid #1f2937; }
+    .controls { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+    .btn { cursor: pointer; border: 1px solid #334155; background: #0ea5e9; color: #081018; padding: 10px 14px; border-radius: 10px; font-weight: 600; transition: transform .08s ease, filter .2s ease; }
+    .btn.alt { background: #64748b; color: #0b1220; }
+    .btn:active { transform: translateY(1px); }
+    .meter { height: 10px; background: #0b1220; border: 1px solid #1f2937; border-radius: 999px; overflow: hidden; }
+    .bar { height: 100%; background: linear-gradient(90deg,#22d3ee,#60a5fa,#a78bfa); width: 30%; transition: width .2s; }
+    .pill { background: #0b1220; padding: 6px 10px; border: 1px solid #1f2937; border-radius: 999px; font-size: 12px; opacity: .9; }
+    input[type="range"] { width: 100%; }
+    .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; background: #0b1220; padding: 2px 6px; border: 1px solid #1f2937; border-radius: 6px; }
+    .muted { color: #94a3b8; }
+    .list li { margin: 6px 0; }
+    .glow { text-shadow: 0 0 16px rgba(99,102,241,.5); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useRef, useState, useEffect } = React;
+
+    function useRendersCounter(){
+      const renders = useRef(0);
+      useEffect(()=>{ renders.current += 1; });
+      return renders;
+    }
+
+    function BouncingBall(){
+      // 1) Referencia al DOM (canvas) – no causa re-render al cambiar
+      const canvasRef = useRef(null);
+      // 2) Guardar estado mutable de la animación fuera del render
+      const rafRef = useRef(null);        // requestAnimationFrame id
+      const lastTimeRef = useRef(null);   // timestamp anterior
+      const stateRef = useRef({ x: 80, y: 60, vx: 140, vy: 120, r: 14 });
+      const speedRef = useRef(1);         // factor de velocidad ajustable sin re-render
+
+      const [running, setRunning] = useState(false);
+      const renders = useRendersCounter();
+
+      // Función de animación con delta-time
+      const tick = (ts)=>{
+        const canvas = canvasRef.current;
+        if(!canvas){ return; }
+        const ctx = canvas.getContext('2d');
+        if(lastTimeRef.current == null) lastTimeRef.current = ts;
+        const dt = Math.min(0.032, (ts - lastTimeRef.current)/1000) * speedRef.current; // cap 32ms
+        lastTimeRef.current = ts;
+
+        const { width, height } = canvas;
+        const s = stateRef.current;
+        s.x += s.vx * dt; s.y += s.vy * dt;
+        // Rebotes
+        if(s.x < s.r){ s.x = s.r; s.vx *= -1; }
+        if(s.x > width - s.r){ s.x = width - s.r; s.vx *= -1; }
+        if(s.y < s.r){ s.y = s.r; s.vy *= -1; }
+        if(s.y > height - s.r){ s.y = height - s.r; s.vy *= -1; }
+
+        // Render
+        ctx.clearRect(0,0,width,height);
+        // Fondo dinámico
+        const grad = ctx.createLinearGradient(0,0,width,height);
+        grad.addColorStop(0,'#0ea5e9');
+        grad.addColorStop(1,'#6366f1');
+        ctx.fillStyle = grad; ctx.globalAlpha = 0.1; ctx.fillRect(0,0,width,height); ctx.globalAlpha = 1;
+        // Trazo
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+        ctx.fillStyle = '#e2e8f0';
+        ctx.shadowColor = '#22d3ee';
+        ctx.shadowBlur = 22;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        rafRef.current = requestAnimationFrame(tick);
+      };
+
+      const start = ()=>{
+        if(!rafRef.current){ lastTimeRef.current = null; rafRef.current = requestAnimationFrame(tick); setRunning(true); }
+      };
+      const stop = ()=>{ cancelAnimationFrame(rafRef.current); rafRef.current = null; setRunning(false); };
+      const reset = ()=>{ stateRef.current = { x: 80, y: 60, vx: 140, vy: 120, r: 14 }; };
+
+      // Limpieza al desmontar
+      useEffect(()=>()=> cancelAnimationFrame(rafRef.current),[]);
+
+      // Resize canvas al ancho del contenedor
+      useEffect(()=>{
+        const canvas = canvasRef.current;
+        if(!canvas) return;
+        const resize = ()=>{
+          const rect = canvas.parentElement.getBoundingClientRect();
+          canvas.width = Math.max(320, Math.floor(rect.width));
+          canvas.height = Math.floor(canvas.width * 9/16);
+        };
+        resize();
+        const ro = new ResizeObserver(resize); ro.observe(canvas.parentElement);
+        return ()=> ro.disconnect();
+      },[]);
+
+      return (
+        <div className="card">
+          <h1 className="glow">useRef() en acción: animación + DOM + estado mutable</h1>
+          <div className="row">
+            <section>
+              <canvas ref={canvasRef} width={640} height={360} />
+              <div style={{marginTop:12}} className="controls">
+                <button className="btn" onClick={start} disabled={running}>Iniciar</button>
+                <button className="btn alt" onClick={stop} disabled={!running}>Pausar</button>
+                <button className="btn alt" onClick={reset}>Reset</button>
+                <div style={{gridColumn:'1 / -1'}}>
+                  <label className="muted">Velocidad (no re-renderiza): {speedRef.current.toFixed(1)}×</label>
+                  <input type="range" min="0.2" max="2.5" step="0.1"
+                    defaultValue={speedRef.current}
+                    onChange={(e)=>{ speedRef.current = Number(e.target.value); const pct=(speedRef.current-0.2)/(2.5-0.2); document.querySelector('.bar').style.width = `${Math.round(pct*100)}%`; }} />
+                  <div className="meter"><div className="bar"></div></div>
+                </div>
+              </div>
+            </section>
+            <aside>
+              <InfoPanel renders={renders} />
+            </aside>
+          </div>
+        </div>
+      );
+    }
+
+    function InfoPanel({ renders }){
+      const inputRef = useRef(null);
+      const focusInput = ()=> inputRef.current?.focus();
+
+      // Guardar el valor previo de la caja de texto sin causar re-render
+      const prevValueRef = useRef("");
+      const [value, setValue] = useState("");
+
+      useEffect(()=>{ prevValueRef.current = value; });
+
+      // Debounce con useRef (timer que no dispara renders)
+      const timerRef = useRef(null);
+      const [debounced, setDebounced] = useState("");
+      useEffect(()=>{
+        clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(()=> setDebounced(value), 400);
+        return ()=> clearTimeout(timerRef.current);
+      },[value]);
+
+      return (
+        <div>
+          <h2 style={{marginTop:0}}>¿Qué hace realmente <code>useRef()</code>?</h2>
+          <ul className="list">
+            <li><strong>Apunta al DOM</strong> (ej: el <code>input</code> de abajo) sin provocar re-render.</li>
+            <li><strong>Guarda datos mutables</strong> entre renders (ej: contador de renders, velocidad, timers).</li>
+            <li><strong>No re-renderiza</strong> cuando cambias <code>.current</code> (a diferencia de <code>useState</code>).</li>
+          </ul>
+          <p className="pill">Renderizados del componente: <strong>{renders.current}</strong></p>
+
+          <div style={{marginTop:12}}>
+            <input ref={inputRef} className="kbd" placeholder="Pulsa el botón para enfocar..." value={value} onChange={(e)=> setValue(e.target.value)} />
+            <div style={{marginTop:8, display:'flex', gap:8}}>
+              <button className="btn" onClick={focusInput}>Enfocar input</button>
+              <span className="pill">Prev: {prevValueRef.current || '—'}</span>
+              <span className="pill">Debounced: {debounced || '—'}</span>
+            </div>
+          </div>
+
+          <hr style={{margin:'16px 0', border:'none', borderTop:'1px solid #1f2937'}}/>
+          <p className="muted">Tips rápidos:</p>
+          <ul className="list muted">
+            <li>Usa <code>useRef</code> para IDs de <code>setInterval</code>/<code>setTimeout</code> y cancelarlos en <code>useEffect</code>.</li>
+            <li>Ideal para guardar un valor “previo” y compararlo tras un render.</li>
+            <li>Perfecto para integraciones con librerías no-React (canvas, mapas, WebGL, etc.).</li>
+          </ul>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<BouncingBall/>);
+  </script>
+</body>
+</html>
